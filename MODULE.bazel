@@ -97,7 +97,10 @@ bazel_dep(name = "toolchains_llvm", version = "1.1.2")
 single_version_override(
     module_name = "toolchains_llvm",
     patch_strip = 0,
-    patches = ["third_party/bazel/toolchains_llvm_no_root_check.patch"],
+    patches = [
+        "third_party/bazel/toolchains_llvm_no_root_check.patch",
+        "third_party/bazel/toolchains_llvm_nixos.patch",
+    ],
 )
 
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")

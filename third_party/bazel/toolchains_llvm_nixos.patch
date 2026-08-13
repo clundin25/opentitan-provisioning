@@ -1,0 +1,12 @@
+--- toolchain/internal/common.bzl
++++ toolchain/internal/common.bzl
+@@ -73,7 +73,9 @@
+     "almalinux",
+ ]
+
+ def _linux_dist(rctx):
++    if not rctx.path("/etc/os-release").exists:
++        return ("ubuntu", "20.04")
+     info = {}
+     for line in rctx.read("/etc/os-release").splitlines():
+         parts = line.split("=", 1)
