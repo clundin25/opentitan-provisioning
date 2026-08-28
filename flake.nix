@@ -12,6 +12,23 @@
 
   outputs = { self, nixpkgs, flake-utils, bcr }:
     let
+      overlay = final: prev: {
+        opentitan-provisioning = {
+          pa_server = self.packages.${prev.system}.pa_server;
+          spm_server = self.packages.${prev.system}.spm_server;
+          pb_server = self.packages.${prev.system}.pb_server;
+          all = self.packages.${prev.system}.all;
+        };
+      };
+
+      nixosModule = { config, lib, pkgs, ... }: {
+        imports = [ ./nix/modules ];
+        nixpkgs.overlays = [ overlay ];
+        services.opentitan-provisioning.pa.package = lib.mkDefault pkgs.opentitan-provisioning.pa_server;
+        services.opentitan-provisioning.spm.package = lib.mkDefault pkgs.opentitan-provisioning.spm_server;
+        services.opentitan-provisioning.pb.package = lib.mkDefault pkgs.opentitan-provisioning.pb_server;
+      };
+
       perSystem = flake-utils.lib.eachDefaultSystem (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
@@ -93,27 +110,47 @@ EOF
               mkdir -p $out/bin
               ln -s ${services}/bin/${name} $out/bin/${name}
             '';
+
+          pa_server = mkSingleService "pa_server";
+          spm_server = mkSingleService "spm_server";
+          pb_server = mkSingleService "pb_server";
+
+          applianceSystem = nixpkgs.lib.nixosSystem {
+            inherit system;
+            modules = [
+              nixosModule
+              ./nix/profiles/provisioning-appliance.nix
+              ({ lib, ... }: {
+                networking.hostName = "provisioning-appliance";
+                system.stateVersion = "24.11";
+                fileSystems."/" = lib.mkDefault { device = "/dev/null"; fsType = "ext4"; };
+              })
+            ];
+          };
         in {
           packages = {
             all = services;
             default = services;
-            pa_server = mkSingleService "pa_server";
-            spm_server = mkSingleService "spm_server";
-            pb_server = mkSingleService "pb_server";
+            inherit pa_server spm_server pb_server;
+            provisioning-appliance-vm = applianceSystem.config.system.build.vm;
           };
 
           apps = {
             pa_server = flake-utils.lib.mkApp {
-              drv = self.packages.${system}.pa_server;
+              drv = pa_server;
               name = "pa_server";
             };
             spm_server = flake-utils.lib.mkApp {
-              drv = self.packages.${system}.spm_server;
+              drv = spm_server;
               name = "spm_server";
             };
             pb_server = flake-utils.lib.mkApp {
-              drv = self.packages.${system}.pb_server;
+              drv = pb_server;
               name = "pb_server";
+            };
+            provisioning-appliance-vm = flake-utils.lib.mkApp {
+              drv = applianceSystem.config.system.build.vm;
+              name = "run-provisioning-appliance-vm";
             };
             default = self.apps.${system}.pa_server;
           };
@@ -131,29 +168,35 @@ EOF
           };
         }
       );
-
-      overlay = final: prev: {
-        opentitan-provisioning = {
-          pa_server = self.packages.${prev.system}.pa_server;
-          spm_server = self.packages.${prev.system}.spm_server;
-          pb_server = self.packages.${prev.system}.pb_server;
-          all = self.packages.${prev.system}.all;
-        };
-      };
-
-      nixosModule = { config, lib, pkgs, ... }: {
-        imports = [ ./nix/modules ];
-        nixpkgs.overlays = [ overlay ];
-        services.opentitan-provisioning.pa.package = lib.mkDefault pkgs.opentitan-provisioning.pa_server;
-        services.opentitan-provisioning.spm.package = lib.mkDefault pkgs.opentitan-provisioning.spm_server;
-        services.opentitan-provisioning.pb.package = lib.mkDefault pkgs.opentitan-provisioning.pb_server;
-      };
     in
       perSystem // {
         overlays.default = overlay;
         nixosModules = {
           opentitan-provisioning = nixosModule;
           default = nixosModule;
+          provisioning-appliance-profile = {
+            imports = [
+              nixosModule
+              ./nix/profiles/provisioning-appliance.nix
+            ];
+          };
+        };
+
+        nixosConfigurations.provisioning-appliance = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            self.nixosModules.provisioning-appliance-profile
+            ({ lib, ... }: {
+              networking.hostName = "provisioning-appliance";
+              system.stateVersion = "24.11";
+              boot.loader.systemd-boot.enable = lib.mkDefault true;
+              boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
+              fileSystems."/" = lib.mkDefault {
+                device = "/dev/disk/by-label/nixos";
+                fsType = "ext4";
+              };
+            })
+          ];
         };
       };
 }
