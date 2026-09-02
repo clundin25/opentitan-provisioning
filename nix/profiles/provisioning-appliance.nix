@@ -14,6 +14,7 @@
       enable = true;
       port = lib.mkDefault 5000;
       configDir = lib.mkDefault "/var/lib/opentitan/config";
+      authConfig = lib.mkDefault "sku_auth.yml";
       hsm = {
         soPath = lib.mkDefault "${pkgs.softhsm}/lib/softhsm/libsofthsm2.so";
         pwFile = lib.mkDefault "/var/lib/opentitan/hsm_pin";
@@ -48,7 +49,7 @@
     home = "/home/opentitan";
     createHome = true;
   };
-  users.users.root.password = "opentitan";
+  users.users.root.password = lib.mkDefault "opentitan";
 
   # Enable passwordless sudo for convenience in appliance/VM environment
   security.sudo.wheelNeedsPassword = false;

@@ -23,7 +23,7 @@
 
       nixosModule = { config, lib, pkgs, ... }: {
         imports = [ ./nix/modules ];
-        nixpkgs.overlays = [ overlay ];
+        nixpkgs.overlays = lib.mkDefault [ overlay ];
         services.opentitan-provisioning.pa.package = lib.mkDefault pkgs.opentitan-provisioning.pa_server;
         services.opentitan-provisioning.spm.package = lib.mkDefault pkgs.opentitan-provisioning.spm_server;
         services.opentitan-provisioning.pb.package = lib.mkDefault pkgs.opentitan-provisioning.pb_server;
@@ -127,11 +127,54 @@ EOF
               })
             ];
           };
+          testSha256Hash = "sha256-yPmnllXLIko7PPCojy1667PsHpqYPEw96x3pWIJu+pE=";
+
+          testBinaries = buildBazel8Package {
+            name = "opentitan-provisioning-test-binaries";
+            version = "0.1.0";
+            src = cleanedSource;
+            registry = "${bcr}";
+            bazel = pkgs.bazel_8;
+            targets = [
+              "//src/pa:loadtest"
+              "//src/ate/test_programs:tls_test"
+            ];
+            buildInputs = with pkgs; [
+              stdenv.cc.cc.lib
+              ncurses5
+              zlib
+            ];
+            autoPatchelfIgnoreMissingDeps = [
+              "libtiff.so.6"
+              "libstdc++.so.6"
+              "libgcc_s.so.1"
+              "libtinfo.so.5"
+              "libtinfo.so.6"
+            ];
+            bazelVendorDepsFOD = {
+              outputHash = testSha256Hash;
+              outputHashAlgo = "sha256";
+            };
+            installPhase = ''
+              mkdir -p $out/bin
+              cp bazel-bin/src/pa/loadtest_/loadtest $out/bin/pa_loadtest
+              cp bazel-bin/src/ate/test_programs/tls_test $out/bin/tls_test
+            '';
+          };
+
+          checks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            provisioning-appliance = import ./nix/tests/provisioning-appliance.nix {
+              inherit pkgs self testBinaries;
+            };
+          };
         in {
+          inherit checks;
+
           packages = {
             all = services;
             default = services;
             inherit pa_server spm_server pb_server;
+            test-binaries = testBinaries;
             provisioning-appliance-vm = applianceSystem.config.system.build.vm;
           };
 
