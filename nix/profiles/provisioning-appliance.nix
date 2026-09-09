@@ -1,5 +1,8 @@
 { config, lib, pkgs, ... }:
 
+let
+  keys = import ../keys.nix;
+in
 {
   services.opentitan-provisioning = {
     pa = {
@@ -56,4 +59,24 @@
 
   # Auto-login on virtual console
   services.getty.autologinUser = lib.mkDefault "opentitan";
+
+  # Admin user for remote management and nixos-rebuild
+  users.users.admin = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" ];
+    openssh.authorizedKeys.keys = keys.admin_keys;
+    password = lib.mkDefault "admin";
+  };
+
+  # SSH service for remote updates
+  services.openssh = {
+    enable = lib.mkDefault true;
+    settings = {
+      PasswordAuthentication = lib.mkDefault true;
+      PermitRootLogin = lib.mkDefault "prohibit-password";
+    };
+  };
+
+  # Allow trusted users to deploy closures / run nixos-rebuild over SSH
+  nix.settings.trusted-users = [ "root" "@wheel" ];
 }
