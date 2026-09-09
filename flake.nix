@@ -46,7 +46,14 @@
             src = ./.;
             filter = path: type:
               let base = baseNameOf path;
-              in !(base == "result" || base == ".git" || base == "flake.nix" || base == "flake.lock");
+              in !(
+                base == "result" ||
+                base == ".git" ||
+                base == "nix" ||
+                base == "flake.lock" ||
+                pkgs.lib.hasPrefix "bazel-" base ||
+                pkgs.lib.hasSuffix ".nix" base
+              );
           };
 
           cleanedSource = pkgs.runCommand "opentitan-provisioning-src" {} ''
